@@ -1,56 +1,61 @@
-# INPI Proxy — Financiel Vision
+# INPI Bulk — Benchmark Sectoriel Financiel Vision
 
-Cloudflare Worker servant de proxy transparent vers l'API INPI pour Financiel Vision.
-
-## Déploiement (5 minutes)
-
-### 1. Créer un compte Cloudflare gratuit
-→ https://dash.cloudflare.com/sign-up
-
-### 2. Installer Wrangler (CLI Cloudflare)
-```bash
-npm install -g wrangler
-```
-
-### 3. Se connecter à Cloudflare
-```bash
-wrangler login
-# Ouvre le navigateur → autoriser
-```
-
-### 4. Déployer le Worker
-```bash
-cd inpi-proxy
-npm install
-npm run deploy
-```
-
-→ URL obtenue : `https://inpi-proxy.TON-SOUS-DOMAINE.workers.dev`
-
-### 5. Mettre à jour Financiel Vision
-Dans le dashboard, onglet Benchmark → champ "URL du proxy" → coller l'URL du Worker.
+Pipeline complet pour construire une base de benchmark sectoriel depuis les données INPI.
 
 ## Architecture
 
 ```
-Navigateur (GitHub Pages)
-    ↓ fetch avec Bearer token INPI
-Cloudflare Worker (inpi-proxy.xxx.workers.dev)
-    ↓ proxy transparent
-API INPI (registre-national-entreprises.inpi.fr)
-    ↓ réponse JSON
-Cloudflare Worker
-    ↓ + headers CORS
-Navigateur → calcul percentiles local
+FTP INPI (comptes annuels JSON)
+    ↓ GitHub Actions (mensuel)
+process.py → DuckDB (benchmark.duckdb)
+    ↓ GitHub Release (hébergement gratuit)
+Cloudflare Worker /benchmark?naf=5610A&ca=800000
+    ↓ JSON percentiles Q10-Q90
+Financiel Vision (dashboard client)
 ```
 
-## Sécurité
-- Le Worker ne stocke rien
-- Les logs sont désactivés (observability: false)
-- Le token INPI transite en HTTPS chiffré
-- Seul rfroment85.github.io est autorisé en origin
-- Pas de données clients transmises (seulement SIREN + requêtes INPI)
+## Setup en 3 étapes
 
-## Quotas
-- Free plan : 100 000 requêtes/jour
-- ~100 req/analyse × 10 analyses/jour = 1 000 req/jour → largement suffisant
+### 1. Ajouter les secrets GitHub
+Dans ton repo GitHub → Settings → Secrets → Actions :
+- `INPI_FTP_USER` = ton login FTP INPI
+- `INPI_FTP_PASS` = ton mot de passe FTP INPI
+
+### 2. Mettre les fichiers dans ton repo
+```
+ton-repo/
+├── .github/workflows/inpi-bulk.yml
+├── inpi_bulk/
+│   ├── process.py
+│   ├── stats.py
+│   └── query.py
+└── worker.js  (remplace l'ancien)
+```
+
+### 3. Lancer le premier build
+GitHub → Actions → "INPI Bulk" → Run workflow
+
+La première fois prend 2-6h selon le volume du FTP.
+Ensuite : automatique le 1er de chaque mois.
+
+## Requête benchmark
+
+```
+GET https://inpi-proxy.inpi-proxy-acc.workers.dev/benchmark?naf=5610A&ca=800000
+
+{
+  "source": "INPI_BULK",
+  "naf": "5610A",
+  "annee": "2023",
+  "nb": 4821,
+  "ratios": {
+    "marge_brute": { "q10": 12.3, "q25": 18.1, "q50": 28.4, "q75": 42.1, "q90": 61.2 },
+    "ebe":         { "q10": 2.1,  "q25": 5.8,  "q50": 10.2, "q75": 16.4, "q90": 24.1 },
+    ...
+  }
+}
+```
+
+## Fallback BCE
+Tant que le DuckDB n'est pas encore buildé, le Worker utilise automatiquement
+le dataset BCE (data.economie.gouv.fr) — gratuit, sans auth, CORS natif.
