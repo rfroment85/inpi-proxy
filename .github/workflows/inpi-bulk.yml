@@ -1,0 +1,45 @@
+name: INPI Bulk — Téléchargement & Build DuckDB
+
+on:
+  workflow_dispatch:          # Lancement manuel depuis GitHub
+  schedule:
+    - cron: '0 2 1 * *'       # Automatique le 1er de chaque mois à 2h
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360      # 6h max
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install duckdb ftputil tqdm
+
+      - name: Téléchargement FTP INPI + Build DuckDB
+        env:
+          INPI_FTP_USER: ${{ secrets.INPI_FTP_USER }}
+          INPI_FTP_PASS: ${{ secrets.INPI_FTP_PASS }}
+        run: python inpi_bulk/process.py
+
+      - name: Stats base DuckDB
+        run: python inpi_bulk/stats.py
+
+      - name: Upload DuckDB → GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "db-latest"
+          name: "Base benchmark INPI — $(date +'%Y-%m-%d')"
+          files: inpi_bulk/benchmark.duckdb
+          body: |
+            Base de données benchmark sectoriel INPI
+            Générée automatiquement depuis les comptes annuels JSON du FTP INPI.
+            Mise à jour : ${{ github.run_id }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

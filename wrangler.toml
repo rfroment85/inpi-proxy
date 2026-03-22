@@ -2,12 +2,5 @@ name = "inpi-proxy"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
-# Cloudflare Free plan :
-# - 100 000 requêtes/jour
-# - CPU 10ms/requête
-# - Aucun stockage, aucun log
-# - Déployé sur *.workers.dev (gratuit)
-# - Ou sur ton domaine custom (nécessite plan payant ou domaine CF)
-
 [observability]
-enabled = false  # Pas de logs pour préserver la confidentialité
+enabled = false
